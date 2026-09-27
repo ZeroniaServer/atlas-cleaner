@@ -9,7 +9,6 @@ const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 const downloadBtn = document.getElementById("downloadBtn");
 const fileButton = document.getElementById("fileButton");
-const goAtlasBtn = document.getElementById("goAtlasBtn");
 const convertAgainBtn = document.getElementById("convertAgainBtn");
 
 const foldersToDelete = [
@@ -122,12 +121,6 @@ downloadBtn.addEventListener("click", (e) => {
     a.download = `${selectedFile.name.replace(/\.zip$/i, "")}-cleaned.zip`;
     a.click();
     URL.revokeObjectURL(url);
-});
-
-// ---------------- EXTERNAL LINKS ----------------
-
-goAtlasBtn.addEventListener("click", () => {
-    window.open("https://atlas.minecraft.net/", "_blank");
 });
 
 // ---------------- RESET ----------------
