@@ -34,7 +34,8 @@ const foldersToDelete = [
 
 const foldersToClean = [
     /^(entities|poi|region)\//,
-    /^dimensions\/[^/]+\/[^/]+\/(entities|poi|region)\//
+    /^dimensions\/[^/]+\/[^/]+\/(entities|poi)\//,
+    /^dimensions\/(?:[^/]+\/)+region\//
 ];
 
 // ---------------- UPLOAD ----------------
