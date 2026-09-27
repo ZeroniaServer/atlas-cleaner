@@ -3,6 +3,20 @@ let cleanedBlob;
 
 const normalizePath = (p) => p.replace(/\\/g, "/");
 
+function findWorldRoot(entries) {
+    const levelDatPaths = entries
+        .filter(([, entry]) => !entry.dir)
+        .map(([path]) => normalizePath(path))
+        .filter((path) => path === "level.dat" || path.endsWith("/level.dat"));
+
+    if (levelDatPaths.length !== 1) return "";
+
+    const levelDatPath = levelDatPaths[0];
+    return levelDatPath === "level.dat"
+        ? ""
+        : levelDatPath.slice(0, -"level.dat".length);
+}
+
 const uploadUI = document.getElementById("uploadUI");
 const fileName = document.getElementById("fileName");
 const dropZone = document.getElementById("dropZone");
@@ -69,12 +83,16 @@ async function handleFile(file) {
     const newZip = new JSZip();
 
     const entries = Object.entries(zip.files);
+    const worldRoot = findWorldRoot(entries);
 
     for (const [path, entry] of entries) {
 
         const normalizedPath = normalizePath(path);
+        if (worldRoot && !normalizedPath.startsWith(worldRoot)) continue;
 
-        if (foldersToDelete.some(f => normalizedPath.startsWith(f))) {
+        const worldPath = normalizedPath.slice(worldRoot.length);
+
+        if (foldersToDelete.some(f => worldPath.startsWith(f))) {
             continue;
         }
 
@@ -84,16 +102,16 @@ async function handleFile(file) {
 
         const isInCleanFolder = foldersToClean.some(f => {
             if (typeof f === "string") {
-                return normalizedPath.startsWith(f);
+                return worldPath.startsWith(f);
             }
-            return f.test(normalizedPath);
+            return f.test(worldPath);
         });
 
         if (isInCleanFolder && content.length === 0) {
             continue;
         }
 
-        newZip.file(path, content);
+        newZip.file(worldPath, content);
     }
 
     cleanedBlob = await newZip.generateAsync({
