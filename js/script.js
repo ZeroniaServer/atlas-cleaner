@@ -31,6 +31,8 @@ const foldersToDelete = [
     "players/",
     "stats/",
     "generated/",
+    /^data\/minecraft\/scoreboard\.dat$/,
+    /^(?:level\.dat_old|session\.lock)$/,
     /^(?:poi|dimensions\/(?:[^/]+\/)+poi)\//
 ];
 
