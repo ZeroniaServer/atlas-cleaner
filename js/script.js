@@ -33,7 +33,10 @@ const foldersToDelete = [
     "generated/",
     /^data\/minecraft\/scoreboard\.dat$/,
     /^(?:level\.dat_old|session\.lock)$/,
-    /^(?:poi|dimensions\/(?:[^/]+\/)+poi)\//
+    /^(?:poi|dimensions\/(?:[^/]+\/)+poi)\//,
+    /(?:^|\/)\.[^/]+(?:\/|$)/,
+    /\.(?:md|py)$/i,
+    /(?:^|\/)(?!license\.txt$)[^/]+\.txt$/i
 ];
 
 const foldersToClean = [
