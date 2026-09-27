@@ -281,14 +281,6 @@ body {
     gap: .125rem;
 }
 
-.extra-buttons {
-    display: flex;
-    gap: 0.75rem;
-    padding-bottom: .5rem;
-    width: 22rem;
-    justify-content: space-between;
-}
-
 .title {
     width: 100%;
     display: flex;
@@ -400,10 +392,6 @@ body {
     margin: 0;
     margin-top: 1rem;
     margin-bottom: 1rem;
-}
-
-#convertAgainBtn {
-    transition: opacity 0.3s ease;
 }
 
 .hidden {

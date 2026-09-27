@@ -98,7 +98,6 @@ const fileInput = document.getElementById("fileInput");
 const downloadBtn = document.getElementById("downloadBtn");
 const downloadFilename = document.getElementById("downloadFilename");
 const fileButton = document.getElementById("fileButton");
-const convertAgainBtn = document.getElementById("convertAgainBtn");
 const dimensionUI = document.getElementById("dimensionUI");
 const dimensionList = document.getElementById("dimensionList");
 const dimensionNextBtn = document.getElementById("dimensionNextBtn");
@@ -348,7 +347,6 @@ async function handleFile(file) {
     datapackUI.classList.add("hidden");
     resourceUI.classList.add("hidden");
     downloadBtn.classList.add("hidden");
-    convertAgainBtn.classList.add("hidden");
 
     pendingZip = await JSZip.loadAsync(file);
     pendingEntries = Object.entries(pendingZip.files);
@@ -490,7 +488,6 @@ async function processResourcePack(file) {
         dropZone.classList.remove("dimension-mode");
         downloadBtn.classList.remove("hidden");
         downloadFilename.textContent = downloadFileName;
-        convertAgainBtn.classList.remove("hidden");
     } catch (error) {
         resourceFileInput.value = "";
         alert(error.message || "The resource pack could not be processed.");
@@ -519,35 +516,4 @@ downloadBtn.addEventListener("click", (e) => {
     a.download = downloadFileName;
     a.click();
     URL.revokeObjectURL(url);
-});
-
-// ---------------- RESET ----------------
-
-convertAgainBtn.addEventListener("click", () => {
-    selectedFile = null;
-    cleanedBlob = null;
-    downloadFileName = "Filename.zip";
-    downloadFilename.textContent = downloadFileName;
-    pendingZip = null;
-    pendingEntries = null;
-    pendingWorldRoot = null;
-    pendingDimensions = null;
-    pendingDatapacks = null;
-    pendingSelectedDimensions = new Set();
-    pendingCleanWorldZip = null;
-    downloadBtn.style.minWidth = "";
-    fileInput.value = "";
-    resourceFileInput.value = "";
-    hideLoading();
-
-    uploadUI.classList.remove("hidden");
-    dimensionUI.classList.add("hidden");
-    dimensionList.innerHTML = "";
-    datapackUI.classList.add("hidden");
-    datapackList.innerHTML = "";
-    resourceUI.classList.add("hidden");
-    dropZone.classList.remove("dimension-mode");
-
-    downloadBtn.classList.add("hidden");
-    convertAgainBtn.classList.add("hidden");
 });
