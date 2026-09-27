@@ -29,7 +29,9 @@ const foldersToDelete = [
     "advancements/",
     "playerdata/",
     "players/",
-    "stats/"
+    "stats/",
+    "generated/",
+    /^(?:poi|dimensions\/(?:[^/]+\/)+poi)\//
 ];
 
 const foldersToClean = [
@@ -93,7 +95,12 @@ async function handleFile(file) {
 
         const worldPath = normalizedPath.slice(worldRoot.length);
 
-        if (foldersToDelete.some(f => worldPath.startsWith(f))) {
+        if (foldersToDelete.some(f => {
+            if (typeof f === "string") {
+                return worldPath.startsWith(f);
+            }
+            return f.test(worldPath);
+        })) {
             continue;
         }
 
