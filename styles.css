@@ -325,7 +325,7 @@ body {
 }
 
 .more-text.show {
-    max-height: 200px;
+    max-height: 34rem;
     opacity: 1;
 }
 
@@ -335,6 +335,69 @@ body {
     white-space: normal;
     color: var(--white);
     margin-block-end: 0em;
+}
+
+.changes-tree {
+    background: #262423;
+    border: 2px solid var(--off-black);
+    box-shadow: 0 0.375rem 0 0 rgba(0, 0, 0, .5) inset;
+    box-sizing: border-box;
+    color: var(--gray-2);
+    font-family: 'MinecraftSeven', sans-serif;
+    font-size: .875rem;
+    line-height: 1.35;
+    max-height: min(40vh, 24rem);
+    overflow: auto;
+    padding: .5rem;
+    width: 22rem;
+}
+
+.change-tree-folder {
+    margin: .125rem 0;
+}
+
+.change-tree-folder > summary,
+.change-tree-file {
+    cursor: default;
+    overflow-wrap: anywhere;
+}
+
+.change-tree-folder > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.change-tree-folder > summary::-webkit-details-marker {
+    display: none;
+}
+
+.change-tree-folder > summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: .375rem;
+    transform: scale(.7);
+}
+
+.change-tree-folder[open] > summary::before {
+    transform: rotate(90deg) scale(.7);
+}
+
+.change-tree-folder > :not(summary),
+.change-tree-file {
+    margin-left: 1rem;
+}
+
+.change-tree-file {
+    margin-top: .125rem;
+}
+
+.change-tree-removed {
+    opacity: .5;
+    text-decoration: line-through;
+}
+
+.change-tree-added {
+    color: var(--green-3);
 }
 
 .text-title {

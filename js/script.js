@@ -8,6 +8,8 @@ let pendingDimensions;
 let pendingDatapacks;
 let pendingSelectedDimensions = new Set();
 let pendingCleanWorldZip;
+let changeTreeRoot;
+let pendingRemovedPaths = new Set();
 
 const dimensionSelectionKey = "atlas-cleaner-selected-dimensions";
 const datapackSelectionKey = "atlas-cleaner-selected-datapacks";
@@ -23,6 +25,159 @@ const dimensionStorageFolders = new Set([
 ]);
 
 const normalizePath = (p) => p.replace(/\\/g, "/");
+
+function createFolderNode(name, path) {
+    return {
+        name,
+        path,
+        folders: new Map(),
+        files: new Map(),
+        isRemoved: false
+    };
+}
+
+function addChangeTreeEntry(root, path, isDirectory) {
+    const parts = path.split("/").filter(Boolean);
+    if (!parts.length) return;
+
+    let folder = root;
+    for (const [index, part] of parts.entries()) {
+        const isLast = index === parts.length - 1;
+        const nodePath = `${parts.slice(0, index + 1).join("/")}${isLast && !isDirectory ? "" : "/"}`;
+
+        if (isLast && !isDirectory) {
+            folder.files.set(nodePath, { name: part, path: nodePath, isRemoved: false });
+            continue;
+        }
+
+        if (!folder.folders.has(nodePath)) {
+            folder.folders.set(nodePath, createFolderNode(part, nodePath));
+        }
+        folder = folder.folders.get(nodePath);
+    }
+}
+
+function buildChangeTree(entries, worldRoot) {
+    const root = createFolderNode("", "");
+
+    for (const [path, entry] of entries) {
+        const normalizedPath = normalizePath(path);
+        if (worldRoot && !normalizedPath.startsWith(worldRoot)) continue;
+
+        const worldPath = normalizedPath.slice(worldRoot.length);
+        addChangeTreeEntry(root, worldPath, entry.dir);
+    }
+
+    return root;
+}
+
+function addResourcePackToChangeTree(entries, resourceRoot) {
+    const resourcePrefix = "resourcepacks/resources.zip";
+
+    addChangeTreeEntry(changeTreeRoot, resourcePrefix, true);
+    for (const [path, entry] of entries) {
+        const normalizedPath = normalizePath(path);
+        if (resourceRoot && !normalizedPath.startsWith(resourceRoot)) continue;
+
+        const resourcePath = normalizedPath.slice(resourceRoot.length);
+        addChangeTreeEntry(changeTreeRoot, `${resourcePrefix}/${resourcePath}`, entry.dir);
+    }
+}
+
+function updateChangeTreeRemovalState(node) {
+    let fileCount = 0;
+    let removedCount = 0;
+    let hasRemovedDescendant = false;
+
+    for (const file of node.files.values()) {
+        file.isRemoved = pendingRemovedPaths.has(file.path);
+        fileCount += 1;
+        if (file.isRemoved) {
+            removedCount += 1;
+            hasRemovedDescendant = true;
+        }
+    }
+
+    for (const folder of node.folders.values()) {
+        const childState = updateChangeTreeRemovalState(folder);
+        fileCount += childState.fileCount;
+        removedCount += childState.removedCount;
+        hasRemovedDescendant ||= childState.hasRemovedDescendant;
+    }
+
+    node.isRemoved = pendingRemovedPaths.has(node.path) || (
+        fileCount > 0 && fileCount === removedCount
+    );
+    node.hasRemovedDescendant = hasRemovedDescendant || node.isRemoved;
+    return { fileCount, removedCount, hasRemovedDescendant };
+}
+
+function renderChangeTreeNode(node, expandedPaths, depth = 0) {
+    const folder = document.createElement("details");
+    const summary = document.createElement("summary");
+
+    folder.className = "change-tree-folder";
+    folder.dataset.path = node.path;
+    folder.open = expandedPaths.has(node.path) || (
+        depth < 2 && node.hasRemovedDescendant
+    );
+    summary.textContent = node.name;
+    if (node.isRemoved) summary.classList.add("change-tree-removed");
+    folder.append(summary);
+
+    const folders = [...node.folders.values()]
+        .sort((a, b) => a.name.localeCompare(b.name));
+    const files = [...node.files.values()]
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const child of folders) {
+        folder.append(renderChangeTreeNode(child, expandedPaths, depth + 1));
+    }
+
+    for (const file of files) {
+        const element = document.createElement("div");
+        element.className = "change-tree-file";
+        element.textContent = file.name;
+        if (file.isRemoved) element.classList.add("change-tree-removed");
+        folder.append(element);
+    }
+
+    return folder;
+}
+
+function renderChangesTree() {
+    if (!changeTreeRoot) return;
+
+    const changesTree = document.getElementById("changesTree");
+    const expandedPaths = new Set(
+        [...changesTree.querySelectorAll("details[open]")]
+            .map(folder => folder.dataset.path)
+    );
+
+    updateChangeTreeRemovalState(changeTreeRoot);
+    changesTree.replaceChildren();
+
+    const folders = [...changeTreeRoot.folders.values()]
+        .sort((a, b) => a.name.localeCompare(b.name));
+    const files = [...changeTreeRoot.files.values()]
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const folder of folders) {
+        changesTree.append(renderChangeTreeNode(folder, expandedPaths));
+    }
+
+    for (const file of files) {
+        const element = document.createElement("div");
+        element.className = "change-tree-file";
+        element.textContent = file.name;
+        if (file.isRemoved) element.classList.add("change-tree-removed");
+        changesTree.append(element);
+    }
+}
+
+function markPathRemoved(path) {
+    pendingRemovedPaths.add(path);
+}
 
 function defaultDownloadName(fileName) {
     return `${fileName.replace(/\.zip$/i, "")}-cleaned.zip`;
@@ -351,6 +506,10 @@ async function handleFile(file) {
     pendingZip = await JSZip.loadAsync(file);
     pendingEntries = Object.entries(pendingZip.files);
     pendingWorldRoot = findWorldRoot(pendingEntries);
+    pendingRemovedPaths = new Set();
+    changeTreeRoot = buildChangeTree(pendingEntries, pendingWorldRoot);
+    window.activateChangesPanel();
+    renderChangesTree();
 
     pendingDimensions = findDimensions(pendingEntries, pendingWorldRoot);
     pendingDatapacks = findDatapacks(pendingEntries, pendingWorldRoot);
@@ -400,14 +559,17 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
         const worldPath = normalizedPath.slice(pendingWorldRoot.length);
 
         if ([...selectedDimensions].some(dimensionPath => worldPath.startsWith(dimensionPath))) {
+            markPathRemoved(worldPath);
             continue;
         }
 
         if ([...selectedDatapacks].some(datapackPath => worldPath.startsWith(datapackPath))) {
+            markPathRemoved(worldPath);
             continue;
         }
 
         if (matchesDeleteRule(worldPath)) {
+            markPathRemoved(worldPath);
             continue;
         }
 
@@ -423,6 +585,7 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
         });
 
         if (isInCleanFolder && content.length === 0) {
+            markPathRemoved(worldPath);
             continue;
         }
 
@@ -460,13 +623,18 @@ async function processResourcePack(file) {
 
         const resourceRoot = findResourceRoot(resourceEntries);
         const cleanedResourceZip = new JSZip();
+        addResourcePackToChangeTree(resourceEntries, resourceRoot);
+        renderChangesTree();
 
         for (const [path, entry] of resourceEntries) {
             const normalizedPath = normalizePath(path);
             if (resourceRoot && !normalizedPath.startsWith(resourceRoot)) continue;
 
             const resourcePath = normalizedPath.slice(resourceRoot.length);
-            if (removableMetadataPatterns.some(pattern => pattern.test(resourcePath))) continue;
+            if (removableMetadataPatterns.some(pattern => pattern.test(resourcePath))) {
+                markPathRemoved(`resourcepacks/resources.zip/${resourcePath}`);
+                continue;
+            }
             if (entry.dir) continue;
 
             const content = await entry.async("uint8array");
@@ -486,6 +654,7 @@ async function processResourcePack(file) {
         hideLoading();
         resourceFileInput.value = "";
         dropZone.classList.remove("dimension-mode");
+        renderChangesTree();
         downloadBtn.classList.remove("hidden");
         downloadFilename.textContent = downloadFileName;
     } catch (error) {

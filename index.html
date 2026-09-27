@@ -7,8 +7,8 @@
 <link rel="icon" href="./assets/imgs/realms.png">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="./js/expander.js" defer></script>
-<script src="./js/script.js" defer></script>
+<script src="./js/expander.js?v=changes-manifest-2" defer></script>
+<script src="./js/script.js?v=changes-manifest-2" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -67,15 +67,16 @@
             </div>
         </div>
         <div class="title">
-            <h3 class="text-title">Information</h3>
-            <button aria-expanded="false" aria-controls="explenations" class="text-expander" >
+            <h3 id="panelTitle" class="text-title">Information</h3>
+            <button aria-expanded="false" aria-controls="panelContent" class="text-expander">
                 <span class="label">Read more</span>
                 <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0L2 0L2 2L0 2L0 0Z" fill="currentColor"></path><path d="M2 2H4V4L2 4L2 2Z" fill="currentColor"></path><path d="M4 4H6V6H4L4 4Z" fill="currentColor"></path><path d="M6 2H8L8 4H6L6 2Z" fill="currentColor"></path><path d="M8 0L10 0V2L8 2V0Z" fill="currentColor"></path></svg>
             </button>
         </div>
-        <div class="text">
+        <div id="panelContent" class="text">
             <div class="more-text">
-                <p>What does this site do?<br>It prepares a Minecraft world ZIP by removing 0kb region files, poi, player, generated, scoreboards, <code>level.dat_old</code>, and <code>session.lock</code> as well as hidden or undeed documentation files.<br><br>Allows selecting dimensions and datapacks to remove. And packages and cleans resourcepack with similar metadata rules.</p>
+                <p id="informationText">What does this site do?<br>It prepares a Minecraft world ZIP by removing 0kb region files, poi, player, generated, scoreboards, <code>level.dat_old</code>, and <code>session.lock</code> as well as hidden or undeed documentation files.<br><br>Allows selecting dimensions and datapacks to remove. And packages and cleans resourcepack with similar metadata rules.</p>
+                <div id="changesTree" class="changes-tree hidden" aria-label="World file changes"></div>
             </div>
         </div>
         <div class="divider"></div>
