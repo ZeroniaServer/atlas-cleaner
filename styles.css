@@ -85,6 +85,13 @@ body {
     gap: 0.75rem;
 }
 
+.loading-icon {
+    color: var(--green-1);
+    filter: brightness(0) saturate(100%) invert(43%) sepia(35%) saturate(1040%) hue-rotate(61deg) brightness(91%) contrast(91%);
+    height: 36px;
+    width: 36px;
+}
+
 .selection-ui {
     width: 100%;
     display: flex;
@@ -172,7 +179,7 @@ body {
     display: block;
 }
 
-.selection-next {
+.selection-ui > .button {
     align-self: flex-start;
 }
 
@@ -243,9 +250,41 @@ body {
     border: 2px solid white;
 }
 
+.download-filename {
+    cursor: text;
+    display: block;
+    line-height: 1.1;
+}
+
+.download-filename:hover {
+    text-decoration: underline;
+}
+
+.download-filename-input {
+    background: transparent;
+    border: 0;
+    box-sizing: content-box;
+    color: inherit;
+    display: block;
+    font: inherit;
+    line-height: 1.1;
+    margin: 0;
+    min-width: 0;
+    outline: 0;
+    padding: 0;
+    text-align: center;
+}
+
+#downloadBtn {
+    align-items: center;
+    flex-direction: column;
+    gap: .125rem;
+}
+
 .extra-buttons {
     display: flex;
     gap: 0.75rem;
+    padding-bottom: .5rem;
     width: 22rem;
     justify-content: space-between;
 }

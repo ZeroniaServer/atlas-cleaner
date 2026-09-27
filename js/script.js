@@ -1,11 +1,13 @@
 let selectedFile;
 let cleanedBlob;
+let downloadFileName = "Filename.zip";
 let pendingZip;
 let pendingEntries;
 let pendingWorldRoot;
 let pendingDimensions;
 let pendingDatapacks;
 let pendingSelectedDimensions = new Set();
+let pendingCleanWorldZip;
 
 const dimensionSelectionKey = "atlas-cleaner-selected-dimensions";
 const datapackSelectionKey = "atlas-cleaner-selected-datapacks";
@@ -22,24 +24,79 @@ const dimensionStorageFolders = new Set([
 
 const normalizePath = (p) => p.replace(/\\/g, "/");
 
-function findWorldRoot(entries) {
-    const levelDatPaths = entries
+function defaultDownloadName(fileName) {
+    return `${fileName.replace(/\.zip$/i, "")}-cleaned.zip`;
+}
+
+function sanitizeDownloadName(name) {
+    const cleanedName = name
+        .trim()
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-");
+    const fallbackName = selectedFile ? defaultDownloadName(selectedFile.name) : "Filename.zip";
+    const safeName = cleanedName || fallbackName;
+    return /\.zip$/i.test(safeName) ? safeName : `${safeName}.zip`;
+}
+
+function beginDownloadNameEdit() {
+    const input = document.createElement("input");
+    input.className = "download-filename-input";
+    input.type = "text";
+    input.value = downloadFileName;
+    const buttonWidth = downloadBtn.getBoundingClientRect().width;
+    const filenameWidth = downloadFilename.getBoundingClientRect().width;
+    downloadBtn.style.minWidth = `${buttonWidth}px`;
+    input.style.width = `${filenameWidth}px`;
+    input.addEventListener("click", event => event.stopPropagation());
+    input.addEventListener("keydown", event => {
+        if (event.key === "Enter") input.blur();
+        if (event.key === "Escape") {
+            input.value = downloadFileName;
+            input.blur();
+        }
+    });
+    input.addEventListener("blur", () => {
+        downloadFileName = sanitizeDownloadName(input.value);
+        downloadFilename.textContent = downloadFileName;
+        downloadBtn.style.minWidth = "";
+        input.replaceWith(downloadFilename);
+    }, { once: true });
+
+    downloadFilename.replaceWith(input);
+    requestAnimationFrame(() => {
+        input.focus();
+        input.select();
+    });
+}
+
+function findArchiveRoot(entries, rootFileName) {
+    const rootPaths = entries
         .filter(([, entry]) => !entry.dir)
         .map(([path]) => normalizePath(path))
-        .filter((path) => path === "level.dat" || path.endsWith("/level.dat"));
+        .filter((path) => path === rootFileName || path.endsWith(`/${rootFileName}`));
 
-    if (levelDatPaths.length !== 1) return "";
+    if (rootPaths.length !== 1) return "";
 
-    const levelDatPath = levelDatPaths[0];
-    return levelDatPath === "level.dat"
+    const rootPath = rootPaths[0];
+    return rootPath === rootFileName
         ? ""
-        : levelDatPath.slice(0, -"level.dat".length);
+        : rootPath.slice(0, -rootFileName.length);
+}
+
+function findWorldRoot(entries) {
+    return findArchiveRoot(entries, "level.dat");
+}
+
+function findResourceRoot(entries) {
+    return findArchiveRoot(entries, "pack.mcmeta");
 }
 
 const uploadUI = document.getElementById("uploadUI");
+const loadingUI = document.getElementById("loadingUI");
+const loadingText = document.getElementById("loadingText");
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 const downloadBtn = document.getElementById("downloadBtn");
+const downloadFilename = document.getElementById("downloadFilename");
 const fileButton = document.getElementById("fileButton");
 const convertAgainBtn = document.getElementById("convertAgainBtn");
 const dimensionUI = document.getElementById("dimensionUI");
@@ -48,6 +105,15 @@ const dimensionNextBtn = document.getElementById("dimensionNextBtn");
 const datapackUI = document.getElementById("datapackUI");
 const datapackList = document.getElementById("datapackList");
 const datapackNextBtn = document.getElementById("datapackNextBtn");
+const resourceUI = document.getElementById("resourceUI");
+const resourceFileButton = document.getElementById("resourceFileButton");
+const resourceFileInput = document.getElementById("resourceFileInput");
+
+const removableMetadataPatterns = [
+    /(?:^|\/)\.[^/]+(?:\/|$)/,
+    /\.(?:md|py)$/i,
+    /(?:^|\/)(?!license\.txt$)[^/]+\.txt$/i
+];
 
 const foldersToDelete = [
     "advancements/",
@@ -58,9 +124,7 @@ const foldersToDelete = [
     /^data\/minecraft\/scoreboard\.dat$/,
     /^(?:level\.dat_old|session\.lock)$/,
     /^(?:poi|dimensions\/(?:[^/]+\/)+poi)\//,
-    /(?:^|\/)\.[^/]+(?:\/|$)/,
-    /\.(?:md|py)$/i,
-    /(?:^|\/)(?!license\.txt$)[^/]+\.txt$/i
+    ...removableMetadataPatterns
 ];
 
 const foldersToClean = [
@@ -133,6 +197,30 @@ function saveSelectedItems(selectionKey, selectedItems) {
     }
 }
 
+function matchesDeleteRule(filePath, rules = foldersToDelete) {
+    return rules.some(rule => {
+        if (typeof rule === "string") {
+            return filePath.startsWith(rule);
+        }
+        return rule.test(filePath);
+    });
+}
+
+function showLoading(message) {
+    uploadUI.classList.add("hidden");
+    dimensionUI.classList.add("hidden");
+    datapackUI.classList.add("hidden");
+    resourceUI.classList.add("hidden");
+    downloadBtn.classList.add("hidden");
+    loadingText.textContent = message;
+    loadingUI.classList.remove("hidden");
+    dropZone.classList.remove("dimension-mode");
+}
+
+function hideLoading() {
+    loadingUI.classList.add("hidden");
+}
+
 function dimensionLabel(dimensionPath) {
     const parts = dimensionPath.split("/");
     return `${parts[1]}:${parts.slice(2, -1).join("/")}`;
@@ -144,8 +232,10 @@ function updateSelectionRow(row, input) {
 
 function showSelectionSelector(list, ui, items, selectionKey, labelFor) {
     const rememberedItems = readSelectedItems(selectionKey);
+    hideLoading();
     dimensionUI.classList.add("hidden");
     datapackUI.classList.add("hidden");
+    resourceUI.classList.add("hidden");
     list.innerHTML = "";
 
     for (const item of items) {
@@ -211,6 +301,15 @@ datapackNextBtn.addEventListener("click", () => {
     startProcessing(pendingSelectedDimensions, selectedDatapacks);
 });
 
+resourceFileButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    resourceFileInput.click();
+});
+
+resourceFileInput.addEventListener("change", () => {
+    processResourcePack(resourceFileInput.files[0]);
+});
+
 // ---------------- DRAG & DROP ----------------
 
 dropZone.addEventListener("dragover", (e) => {
@@ -225,7 +324,15 @@ dropZone.addEventListener("dragleave", () => {
 dropZone.addEventListener("drop", (e) => {
     e.preventDefault();
     dropZone.classList.remove("dragover");
-    handleFile(e.dataTransfer.files[0]);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+
+    if (!resourceUI.classList.contains("hidden")) {
+        processResourcePack(file);
+        return;
+    }
+
+    handleFile(file);
 });
 
 // ---------------- CORE PIPELINE ----------------
@@ -234,9 +341,12 @@ async function handleFile(file) {
     if (!file) return;
 
     selectedFile = file;
-    uploadUI.classList.add("hidden");
+    downloadFileName = defaultDownloadName(file.name);
+    downloadFilename.textContent = downloadFileName;
+    showLoading("Loading...");
     dimensionUI.classList.add("hidden");
     datapackUI.classList.add("hidden");
+    resourceUI.classList.add("hidden");
     downloadBtn.classList.add("hidden");
     convertAgainBtn.classList.add("hidden");
 
@@ -280,11 +390,7 @@ function showDatapackSelectorOrProcess() {
 async function startProcessing(selectedDimensions, selectedDatapacks) {
     if (!pendingZip || !pendingEntries) return;
 
-    dimensionUI.classList.add("hidden");
-    datapackUI.classList.add("hidden");
-    dropZone.classList.remove("dimension-mode");
-    downloadBtn.classList.remove("hidden");
-    downloadBtn.textContent = "Processing...";
+    showLoading("Analyzing...");
 
     const newZip = new JSZip();
 
@@ -303,12 +409,7 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             continue;
         }
 
-        if (foldersToDelete.some(f => {
-            if (typeof f === "string") {
-                return worldPath.startsWith(f);
-            }
-            return f.test(worldPath);
-        })) {
+        if (matchesDeleteRule(worldPath)) {
             continue;
         }
 
@@ -330,16 +431,79 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
         newZip.file(worldPath, content);
     }
 
-    cleanedBlob = await newZip.generateAsync({
-        type: "blob",
-        compression: "DEFLATE"
-    });
+    pendingCleanWorldZip = newZip;
+    showResourceUpload();
+}
 
-    downloadBtn.textContent = "Download";
-    convertAgainBtn.classList.remove("hidden");
+function showResourceUpload() {
+    hideLoading();
+    dimensionUI.classList.add("hidden");
+    datapackUI.classList.add("hidden");
+    resourceUI.classList.remove("hidden");
+    dropZone.classList.remove("dimension-mode");
+}
+
+async function processResourcePack(file) {
+    if (!file || !pendingCleanWorldZip) return;
+
+    showLoading("Cleaning...");
+
+    try {
+        const resourceZip = await JSZip.loadAsync(file);
+        const resourceEntries = Object.entries(resourceZip.files);
+        const packMetaPaths = resourceEntries
+            .filter(([, entry]) => !entry.dir)
+            .map(([path]) => normalizePath(path))
+            .filter(path => path === "pack.mcmeta" || path.endsWith("/pack.mcmeta"));
+
+        if (packMetaPaths.length !== 1) {
+            throw new Error("The resource pack must contain exactly one pack.mcmeta file.");
+        }
+
+        const resourceRoot = findResourceRoot(resourceEntries);
+        const cleanedResourceZip = new JSZip();
+
+        for (const [path, entry] of resourceEntries) {
+            const normalizedPath = normalizePath(path);
+            if (resourceRoot && !normalizedPath.startsWith(resourceRoot)) continue;
+
+            const resourcePath = normalizedPath.slice(resourceRoot.length);
+            if (removableMetadataPatterns.some(pattern => pattern.test(resourcePath))) continue;
+            if (entry.dir) continue;
+
+            const content = await entry.async("uint8array");
+            cleanedResourceZip.file(resourcePath, content);
+        }
+
+        const cleanedResourceBytes = await cleanedResourceZip.generateAsync({
+            type: "uint8array",
+            compression: "DEFLATE"
+        });
+        pendingCleanWorldZip.file("resourcepacks/resources.zip", cleanedResourceBytes);
+        cleanedBlob = await pendingCleanWorldZip.generateAsync({
+            type: "blob",
+            compression: "DEFLATE"
+        });
+
+        hideLoading();
+        resourceFileInput.value = "";
+        dropZone.classList.remove("dimension-mode");
+        downloadBtn.classList.remove("hidden");
+        downloadFilename.textContent = downloadFileName;
+        convertAgainBtn.classList.remove("hidden");
+    } catch (error) {
+        resourceFileInput.value = "";
+        alert(error.message || "The resource pack could not be processed.");
+        showResourceUpload();
+    }
 }
 
 // ---------------- DOWNLOAD ----------------
+
+downloadFilename.addEventListener("click", event => {
+    event.stopPropagation();
+    beginDownloadNameEdit();
+});
 
 downloadBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -352,7 +516,7 @@ downloadBtn.addEventListener("click", (e) => {
     const url = URL.createObjectURL(cleanedBlob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${selectedFile.name.replace(/\.zip$/i, "")}-cleaned.zip`;
+    a.download = downloadFileName;
     a.click();
     URL.revokeObjectURL(url);
 });
@@ -362,23 +526,28 @@ downloadBtn.addEventListener("click", (e) => {
 convertAgainBtn.addEventListener("click", () => {
     selectedFile = null;
     cleanedBlob = null;
+    downloadFileName = "Filename.zip";
+    downloadFilename.textContent = downloadFileName;
     pendingZip = null;
     pendingEntries = null;
     pendingWorldRoot = null;
     pendingDimensions = null;
     pendingDatapacks = null;
     pendingSelectedDimensions = new Set();
+    pendingCleanWorldZip = null;
+    downloadBtn.style.minWidth = "";
     fileInput.value = "";
+    resourceFileInput.value = "";
+    hideLoading();
 
     uploadUI.classList.remove("hidden");
     dimensionUI.classList.add("hidden");
     dimensionList.innerHTML = "";
     datapackUI.classList.add("hidden");
     datapackList.innerHTML = "";
+    resourceUI.classList.add("hidden");
     dropZone.classList.remove("dimension-mode");
 
     downloadBtn.classList.add("hidden");
     convertAgainBtn.classList.add("hidden");
-
-    downloadBtn.textContent = "Download";
 });
