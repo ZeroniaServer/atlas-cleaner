@@ -552,6 +552,17 @@ function findResourceRoot(entries) {
     return findArchiveRoot(entries, "pack.mcmeta");
 }
 
+const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+
+function is64pxPng(bytes) {
+    if (bytes.length < 24 || !pngSignature.every((value, index) => bytes[index] === value)) return false;
+
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return view.getUint32(8) === 13 &&
+        String.fromCharCode(...bytes.slice(12, 16)) === "IHDR" &&
+        view.getUint32(16) === 64 && view.getUint32(20) === 64;
+}
+
 const uploadUI = document.getElementById("uploadUI");
 const loadingUI = document.getElementById("loadingUI");
 const loadingText = document.getElementById("loadingText");
@@ -951,6 +962,7 @@ async function processResourcePack(file) {
 
         const resourceRoot = findResourceRoot(resourceEntries);
         const cleanedResourceZip = new JSZip();
+        let resourceIcon;
         addResourcePackToChangeTree(resourceEntries, resourceRoot);
         renderChangesTree();
 
@@ -966,6 +978,7 @@ async function processResourcePack(file) {
             if (entry.dir) continue;
 
             const content = await entry.async("uint8array");
+            if (resourcePath === "pack.png" && is64pxPng(content)) resourceIcon = content;
             cleanedResourceZip.file(resourcePath, content);
         }
 
@@ -974,6 +987,10 @@ async function processResourcePack(file) {
             compression: "DEFLATE"
         });
         pendingCleanWorldZip.file("resourcepacks/resources.zip", cleanedResourceBytes);
+        if (resourceIcon) {
+            pendingCleanWorldZip.file("icon.png", resourceIcon);
+            addChangeTreeEntry(changeTreeRoot, "icon.png", false);
+        }
         cleanedBlob = await pendingCleanWorldZip.generateAsync({
             type: "blob",
             compression: "DEFLATE"
