@@ -291,6 +291,7 @@ async function pruneEmptyChunks(selectedDimensions = new Set()) {
     if (!supportedWorldVersions.has(worldVersion)) return output;
 
     const entriesByPath = new Map();
+    const selectedDimensionPaths = [...selectedDimensions];
     for (const [path, entry] of pendingEntries) {
         const normalizedPath = normalizePath(path);
         if (!entry.dir && (!pendingWorldRoot || normalizedPath.startsWith(pendingWorldRoot))) {
@@ -300,7 +301,7 @@ async function pruneEmptyChunks(selectedDimensions = new Set()) {
 
     for (const [regionPath, regionEntry] of entriesByPath) {
         if (!/(?:^|\/)region\/r\.-?\d+\.-?\d+\.mca$/i.test(regionPath)) continue;
-        if ([...selectedDimensions].some(path => regionPath.startsWith(path))) continue;
+        if (selectedDimensionPaths.some(path => regionPath.startsWith(path))) continue;
 
         try {
             const region = readRegionFile(await regionEntry.async("uint8array"));
@@ -882,10 +883,6 @@ async function handleFile(file) {
     downloadFileName = defaultDownloadName(file.name);
     downloadFilename.textContent = downloadFileName;
     showLoading("Loading...");
-    dimensionUI.classList.add("hidden");
-    datapackUI.classList.add("hidden");
-    resourceUI.classList.add("hidden");
-    downloadBtn.classList.add("hidden");
 
     pendingZip = await JSZip.loadAsync(file);
     pendingEntries = Object.entries(pendingZip.files);
@@ -932,6 +929,8 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
     if (!pendingZip || !pendingEntries) return;
 
     const deleteRules = getConfiguredDeleteRules();
+    const selectedDimensionPaths = [...selectedDimensions];
+    const selectedDatapackPaths = [...selectedDatapacks];
     showLoading("Analyzing...");
     await new Promise(resolve => requestAnimationFrame(resolve));
     showLoading("Cleaning...");
@@ -944,12 +943,12 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
 
         const worldPath = normalizedPath.slice(pendingWorldRoot.length);
 
-        if ([...selectedDimensions].some(dimensionPath => worldPath.startsWith(dimensionPath))) {
+        if (selectedDimensionPaths.some(dimensionPath => worldPath.startsWith(dimensionPath))) {
             markPathRemoved(worldPath);
             continue;
         }
 
-        if ([...selectedDatapacks].some(datapackPath => worldPath.startsWith(datapackPath))) {
+        if (selectedDatapackPaths.some(datapackPath => worldPath.startsWith(datapackPath))) {
             markPathRemoved(worldPath);
             continue;
         }
