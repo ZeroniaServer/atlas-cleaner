@@ -90,10 +90,13 @@ body {
 }
 
 .loading-icon {
-    color: var(--green-1);
-    filter: brightness(0) saturate(100%) invert(43%) sepia(35%) saturate(1040%) hue-rotate(61deg) brightness(91%) contrast(91%);
+    filter: brightness(0) saturate(100%) invert(73%) sepia(46%) saturate(1374%) hue-rotate(51deg) brightness(109%) contrast(101%);
     height: 36px;
     width: 36px;
+}
+
+.loading-icon--yellow {
+    filter: brightness(0) saturate(100%) invert(52%) sepia(96%) saturate(1420%) hue-rotate(19deg) brightness(156%) contrast(100%);
 }
 
 .selection-ui {
@@ -190,6 +193,10 @@ body {
 .upload-hole.dragover {
     outline: 2px solid var(--green-3);
     outline-offset: 2px;
+}
+
+.upload-hole.resource-mode.dragover {
+    outline-color: var(--yellow-3);
 }
 
 .button {

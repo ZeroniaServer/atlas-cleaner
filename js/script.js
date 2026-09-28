@@ -555,6 +555,7 @@ function findResourceRoot(entries) {
 const uploadUI = document.getElementById("uploadUI");
 const loadingUI = document.getElementById("loadingUI");
 const loadingText = document.getElementById("loadingText");
+const loadingIcon = loadingUI.querySelector(".loading-icon");
 const dropZone = document.getElementById("dropZone");
 const fileInput = document.getElementById("fileInput");
 const downloadBtn = document.getElementById("downloadBtn");
@@ -667,15 +668,16 @@ function matchesDeleteRule(filePath, rules = foldersToDelete) {
     });
 }
 
-function showLoading(message) {
+function showLoading(message, isResourcePack = false) {
     uploadUI.classList.add("hidden");
     dimensionUI.classList.add("hidden");
     datapackUI.classList.add("hidden");
     resourceUI.classList.add("hidden");
     downloadBtn.classList.add("hidden");
     loadingText.textContent = message;
+    loadingIcon.classList.toggle("loading-icon--yellow", isResourcePack);
     loadingUI.classList.remove("hidden");
-    dropZone.classList.remove("dimension-mode");
+    dropZone.classList.remove("dimension-mode", "resource-mode", "dragover");
 }
 
 function hideLoading() {
@@ -725,6 +727,7 @@ function showSelectionSelector(list, ui, items, selectionKey, labelFor) {
     }
 
     ui.classList.remove("hidden");
+    dropZone.classList.remove("resource-mode", "dragover");
     dropZone.classList.add("dimension-mode");
 }
 
@@ -773,9 +776,13 @@ resourceFileInput.addEventListener("change", () => {
 
 // ---------------- DRAG & DROP ----------------
 
+function canAcceptDrop() {
+    return !uploadUI.classList.contains("hidden") || !resourceUI.classList.contains("hidden");
+}
+
 dropZone.addEventListener("dragover", (e) => {
     e.preventDefault();
-    dropZone.classList.add("dragover");
+    if (canAcceptDrop()) dropZone.classList.add("dragover");
 });
 
 dropZone.addEventListener("dragleave", () => {
@@ -785,6 +792,7 @@ dropZone.addEventListener("dragleave", () => {
 dropZone.addEventListener("drop", (e) => {
     e.preventDefault();
     dropZone.classList.remove("dragover");
+    if (!canAcceptDrop()) return;
     const file = e.dataTransfer.files[0];
     if (!file) return;
 
@@ -920,13 +928,14 @@ function showResourceUpload() {
     dimensionUI.classList.add("hidden");
     datapackUI.classList.add("hidden");
     resourceUI.classList.remove("hidden");
-    dropZone.classList.remove("dimension-mode");
+    dropZone.classList.remove("dimension-mode", "dragover");
+    dropZone.classList.add("resource-mode");
 }
 
 async function processResourcePack(file) {
     if (!file || !pendingCleanWorldZip) return;
 
-    showLoading("Cleaning...");
+    showLoading("Cleaning...", true);
 
     try {
         const resourceZip = await JSZip.loadAsync(file);
@@ -972,7 +981,7 @@ async function processResourcePack(file) {
 
         hideLoading();
         resourceFileInput.value = "";
-        dropZone.classList.remove("dimension-mode");
+        dropZone.classList.remove("dimension-mode", "resource-mode", "dragover");
         renderChangesTree();
         downloadBtn.classList.remove("hidden");
         downloadFilename.textContent = downloadFileName;
