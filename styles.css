@@ -186,6 +186,33 @@ body {
     display: block;
 }
 
+.settings-ui {
+    margin-top: .75rem;
+}
+
+.settings-ui .selection-list {
+    gap: .125rem;
+}
+
+.settings-ui .settings-row {
+    color: var(--white);
+    min-height: 1.25rem;
+    padding: 0;
+}
+
+.settings-row.selected .settings-checkbox {
+    background: var(--green-3);
+}
+
+.settings-delete-row.selected .settings-checkbox {
+    background: var(--red-3);
+}
+
+.settings-row.selected .selection-name {
+    opacity: 1;
+    text-decoration: none;
+}
+
 .selection-ui > .button {
     align-self: flex-start;
 }
@@ -356,6 +383,10 @@ body {
     white-space: normal;
     color: var(--white);
     margin-block-end: 0em;
+}
+
+.changes-mode #settingsUI {
+    display: none;
 }
 
 .changes-tree {

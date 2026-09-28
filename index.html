@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Atlas World Cleaner 26.1-26.3</title>
 <link rel="icon" href="./assets/imgs/realms.png">
-<link rel="stylesheet" href="styles.css?v=ui-loading-colors">
+<link rel="stylesheet" href="styles.css?v=settings-toggle-2">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="./js/expander.js?v=world-cleaner-upload" defer></script>
-<script src="./js/script.js?v=resource-pack-icon" defer></script>
+<script src="./js/script.js?v=settings-toggle-3" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -75,7 +75,32 @@
         </div>
         <div id="panelContent" class="text">
             <div class="more-text">
-                <p id="informationText">What does this site do?<br>It prepares Minecraft 26.1-26.3 world ZIPs by pruning fully empty chunks and removing 0kb region files, poi, player, generated, scoreboards, <code>level.dat_old</code>, and <code>session.lock</code> as well as hidden or unneeded documentation files.<br><br>Allows selecting dimensions and datapacks to remove. And packages and cleans resourcepacks with similar metadata rules.</p>
+                <p id="informationText">What does this site do?<br>It prepares Minecraft 26.1-26.3 world ZIPs by pruning fully empty chunks and removing 0kb region files, player data, <code>level.dat_old</code>, <code>session.lock</code>, hidden files, and unneeded documentation.<br><br>Settings control optional scoreboard, generated, poi, and resource-pack icon cleanup. Dimensions and datapacks can also be selected for removal, and resourcepacks are cleaned and packaged automatically.</p>
+                <div class="selection-ui settings-ui" id="settingsUI" aria-labelledby="settingsTitle">
+                    <h3 id="settingsTitle">Settings</h3>
+                    <div class="selection-list" id="settingsList">
+                        <label class="selection-row settings-row settings-delete-row">
+                            <input type="checkbox" data-setting="removeScoreboard" checked>
+                            <span class="selection-checkbox settings-checkbox"><img class="selection-trash" src="./assets/imgs/trash.png" alt=""></span>
+                            <span class="selection-name">Remove scoreboard.dat</span>
+                        </label>
+                        <label class="selection-row settings-row settings-delete-row">
+                            <input type="checkbox" data-setting="removeGenerated" checked>
+                            <span class="selection-checkbox settings-checkbox"><img class="selection-trash" src="./assets/imgs/trash.png" alt=""></span>
+                            <span class="selection-name">Remove generated</span>
+                        </label>
+                        <label class="selection-row settings-row settings-delete-row">
+                            <input type="checkbox" data-setting="removePoi" checked>
+                            <span class="selection-checkbox settings-checkbox"><img class="selection-trash" src="./assets/imgs/trash.png" alt=""></span>
+                            <span class="selection-name">Remove poi folders</span>
+                        </label>
+                        <label class="selection-row settings-row">
+                            <input type="checkbox" data-setting="copyIcon" checked>
+                            <span class="selection-checkbox settings-checkbox"></span>
+                            <span class="selection-name">Copy icon.png</span>
+                        </label>
+                    </div>
+                </div>
                 <div id="changesTree" class="changes-tree hidden" aria-label="World file changes"></div>
             </div>
         </div>

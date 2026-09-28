@@ -13,6 +13,7 @@ let pendingRemovedPaths = new Set();
 
 const dimensionSelectionKey = "atlas-cleaner-selected-dimensions";
 const datapackSelectionKey = "atlas-cleaner-selected-datapacks";
+const cleanupSettingsKey = "atlas-cleaner-cleanup-settings";
 const dimensionStorageFolders = new Set([
     "advancements",
     "data",
@@ -581,6 +582,7 @@ const datapackNextBtn = document.getElementById("datapackNextBtn");
 const resourceUI = document.getElementById("resourceUI");
 const resourceFileButton = document.getElementById("resourceFileButton");
 const resourceFileInput = document.getElementById("resourceFileInput");
+const settingsList = document.getElementById("settingsList");
 
 const removableMetadataPatterns = [
     /(?:^|\/)\.[^/]+(?:\/|$)/,
@@ -593,12 +595,21 @@ const foldersToDelete = [
     "playerdata/",
     "players/",
     "stats/",
-    "generated/",
-    /^data\/minecraft\/scoreboard\.dat$/,
     /^(?:level\.dat_old|session\.lock)$/,
-    /^(?:poi|dimensions\/(?:[^/]+\/)+poi)\//,
     ...removableMetadataPatterns
 ];
+
+const cleanupSettingDefinitions = {
+    removeScoreboard: { defaultValue: true, rule: /^data\/minecraft\/scoreboard\.dat$/ },
+    removeGenerated: { defaultValue: true, rule: "generated/" },
+    removePoi: { defaultValue: true, rule: /^(?:poi|dimensions\/(?:[^/]+\/)+poi)\// },
+    copyIcon: { defaultValue: true }
+};
+const poiDeleteRule = cleanupSettingDefinitions.removePoi.rule;
+const defaultCleanupSettings = Object.fromEntries(
+    Object.entries(cleanupSettingDefinitions).map(([key, definition]) => [key, definition.defaultValue])
+);
+let cleanupSettings = { ...defaultCleanupSettings };
 
 const foldersToClean = [
     /^(entities|poi|region)\//,
@@ -679,6 +690,37 @@ function matchesDeleteRule(filePath, rules = foldersToDelete) {
     });
 }
 
+function getConfiguredDeleteRules() {
+    return [
+        ...foldersToDelete,
+        ...Object.entries(cleanupSettingDefinitions)
+            .filter(([setting, definition]) => definition.rule && cleanupSettings[setting])
+            .map(([, definition]) => definition.rule)
+    ];
+}
+
+function readCleanupSettings() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(cleanupSettingsKey));
+        return Object.fromEntries(
+            Object.keys(defaultCleanupSettings).map(key => [
+                key,
+                stored && key in stored ? Boolean(stored[key]) : defaultCleanupSettings[key]
+            ])
+        );
+    } catch {
+        return { ...defaultCleanupSettings };
+    }
+}
+
+function saveCleanupSettings() {
+    try {
+        localStorage.setItem(cleanupSettingsKey, JSON.stringify(cleanupSettings));
+    } catch {
+        return;
+    }
+}
+
 function showLoading(message, isResourcePack = false) {
     uploadUI.classList.add("hidden");
     dimensionUI.classList.add("hidden");
@@ -702,6 +744,20 @@ function dimensionLabel(dimensionPath) {
 
 function updateSelectionRow(row, input) {
     row.classList.toggle("selected", input.checked);
+}
+
+function initializeSettings() {
+    cleanupSettings = readCleanupSettings();
+    for (const input of settingsList.querySelectorAll("input[data-setting]")) {
+        const setting = input.dataset.setting;
+        input.checked = cleanupSettings[setting];
+        updateSelectionRow(input.closest(".settings-row"), input);
+        input.addEventListener("change", () => {
+            cleanupSettings[setting] = input.checked;
+            updateSelectionRow(input.closest(".settings-row"), input);
+            saveCleanupSettings();
+        });
+    }
 }
 
 function showSelectionSelector(list, ui, items, selectionKey, labelFor) {
@@ -752,6 +808,8 @@ function selectedItemsFromUI(list) {
 function datapackLabel(datapackPath) {
     return datapackPath.split("/").slice(1, -1).join("/");
 }
+
+initializeSettings();
 
 // ---------------- UPLOAD ----------------
 
@@ -873,6 +931,7 @@ function showDatapackSelectorOrProcess() {
 async function startProcessing(selectedDimensions, selectedDatapacks) {
     if (!pendingZip || !pendingEntries) return;
 
+    const deleteRules = getConfiguredDeleteRules();
     showLoading("Analyzing...");
     await new Promise(resolve => requestAnimationFrame(resolve));
     showLoading("Cleaning...");
@@ -895,7 +954,7 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             continue;
         }
 
-        if (matchesDeleteRule(worldPath)) {
+        if (matchesDeleteRule(worldPath, deleteRules)) {
             markPathRemoved(worldPath);
             continue;
         }
@@ -911,7 +970,8 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             return f.test(worldPath);
         });
 
-        if (isInCleanFolder && content.length === 0) {
+        const isPoiPath = poiDeleteRule.test(worldPath);
+        if (isInCleanFolder && content.length === 0 && (!isPoiPath || cleanupSettings.removePoi)) {
             markPathRemoved(worldPath);
             continue;
         }
@@ -987,7 +1047,7 @@ async function processResourcePack(file) {
             compression: "DEFLATE"
         });
         pendingCleanWorldZip.file("resourcepacks/resources.zip", cleanedResourceBytes);
-        if (resourceIcon) {
+        if (resourceIcon && cleanupSettings.copyIcon) {
             pendingCleanWorldZip.file("icon.png", resourceIcon);
             addChangeTreeEntry(changeTreeRoot, "icon.png", false);
         }
