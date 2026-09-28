@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Atlas Cleaner</title>
+<title>Atlas World Cleaner 26.1-26.3</title>
 <link rel="icon" href="./assets/imgs/realms.png">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=world-cleaner-resource-button">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="./js/expander.js?v=changes-manifest-2" defer></script>
-<script src="./js/script.js?v=changes-manifest-2" defer></script>
+<script src="./js/expander.js?v=world-cleaner-upload" defer></script>
+<script src="./js/script.js?v=world-cleaner-chunk-pruning-2" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
 <div class="container">
     <div class="banner">
         <div class="banner-card">
-            <h2 class="banner-title">Atlas World Cleaner</h2>
+            <h2 class="banner-title">Atlas World Cleaner 26.1-26.3</h2>
         </div>
         <div class="banner-line"></div>
     </div>
@@ -57,7 +57,7 @@
                         <svg width="19" height="21" viewBox="0 0 19 21" fill="currentColor">
                             <path d="M10.5 0.499985H8.5V2.49998H6.5V4.49998H4.5V6.49998H6.5V4.49998H8.5V16.5H10.5V4.49998H12.5V6.49998H14.5V4.49998H12.5V2.49998H10.5V0.499985ZM4.5 8.49998H2.5H0.5V10.5V18.5V20.5H18.5V18.5V10.5V8.49998H16.5H14.5V10.5H16.5V18.5H2.5L2.5 10.5H4.5V8.49998Z"/>
                         </svg>
-                        <button class="button" id="resourceFileButton" type="button">
+                        <button class="button button--yellow" id="resourceFileButton" type="button">
                             <span>Select Resource Pack</span>
                         </button>
                     </div>
@@ -75,7 +75,7 @@
         </div>
         <div id="panelContent" class="text">
             <div class="more-text">
-                <p id="informationText">What does this site do?<br>It prepares a Minecraft world ZIP by removing 0kb region files, poi, player, generated, scoreboards, <code>level.dat_old</code>, and <code>session.lock</code> as well as hidden or undeed documentation files.<br><br>Allows selecting dimensions and datapacks to remove. And packages and cleans resourcepack with similar metadata rules.</p>
+                <p id="informationText">What does this site do?<br>It prepares Minecraft 26.1-26.3 world ZIPs by pruning fully empty chunks and removing 0kb region files, poi, player, generated, scoreboards, <code>level.dat_old</code>, and <code>session.lock</code> as well as hidden or unneeded documentation files.<br><br>Allows selecting dimensions and datapacks to remove. And packages and cleans resourcepacks with similar metadata rules.</p>
                 <div id="changesTree" class="changes-tree hidden" aria-label="World file changes"></div>
             </div>
         </div>

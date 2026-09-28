@@ -25,6 +25,313 @@ const dimensionStorageFolders = new Set([
 ]);
 
 const normalizePath = (p) => p.replace(/\\/g, "/");
+const supportedWorldVersions = new Set(["26.1", "26.2", "26.3"]);
+const airBlockStates = new Set([
+    "minecraft:air",
+    "minecraft:cave_air",
+    "minecraft:void_air"
+]);
+const knownChunkFields = new Set([
+    "xPos",
+    "yPos",
+    "zPos",
+    "DataVersion",
+    "Status",
+    "LastUpdate",
+    "InhabitedTime",
+    "sections",
+    "block_entities",
+    "block_ticks",
+    "fluid_ticks",
+    "structures",
+    "Heightmaps",
+    "isLightOn",
+    "PostProcessing",
+    "CarvingMasks",
+    "starlight.light_version",
+    "blending_data",
+    "entities",
+    "carving_mask"
+]);
+const knownStructureFields = new Set(["starts", "References", "references"]);
+
+// ---------------- CHUNK PRUNING ----------------
+
+function createNbtReader(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let offset = 0;
+    const decoder = new TextDecoder();
+
+    function requireBytes(length) {
+        if (!Number.isInteger(length) || length < 0 || offset + length > view.byteLength) {
+            throw new Error("Invalid NBT data.");
+        }
+    }
+
+    function readString() {
+        requireBytes(2);
+        const length = view.getUint16(offset);
+        offset += 2;
+        requireBytes(length);
+        const value = decoder.decode(new Uint8Array(view.buffer, view.byteOffset + offset, length));
+        offset += length;
+        return value;
+    }
+
+    function readLength() {
+        requireBytes(4);
+        const length = view.getInt32(offset);
+        offset += 4;
+        if (length < 0 || length > 16_777_216) throw new Error("Invalid NBT length.");
+        return length;
+    }
+
+    function readTag(type, depth = 0) {
+        if (depth > 256) throw new Error("NBT nesting is too deep.");
+
+        switch (type) {
+        case 1: requireBytes(1); return view.getInt8(offset++);
+        case 2: requireBytes(2); { const value = view.getInt16(offset); offset += 2; return value; }
+        case 3: requireBytes(4); { const value = view.getInt32(offset); offset += 4; return value; }
+        case 4: requireBytes(8); { const value = view.getBigInt64(offset); offset += 8; return value; }
+        case 5: requireBytes(4); { const value = view.getFloat32(offset); offset += 4; return value; }
+        case 6: requireBytes(8); { const value = view.getFloat64(offset); offset += 8; return value; }
+        case 7: { const length = readLength(); requireBytes(length); const value = new Uint8Array(view.buffer, view.byteOffset + offset, length); offset += length; return value; }
+        case 8: return readString();
+        case 9: {
+            requireBytes(1);
+            const itemType = view.getUint8(offset++);
+            const length = readLength();
+            const value = [];
+            for (let index = 0; index < length; index += 1) value.push(readTag(itemType, depth + 1));
+            return value;
+        }
+        case 10: {
+            const value = {};
+            while (true) {
+                requireBytes(1);
+                const itemType = view.getUint8(offset++);
+                if (itemType === 0) return value;
+                const name = readString();
+                value[name] = readTag(itemType, depth + 1);
+            }
+        }
+        case 11: { const length = readLength(); requireBytes(length * 4); offset += length * 4; return null; }
+        case 12: { const length = readLength(); requireBytes(length * 8); offset += length * 8; return null; }
+        default: throw new Error("Unsupported NBT tag.");
+        }
+    }
+
+    requireBytes(1);
+    if (view.getUint8(offset++) !== 10) throw new Error("NBT root is not a compound.");
+    readString();
+    return readTag(10);
+}
+
+async function decompressNbt(bytes, compression) {
+    if (compression === 3) return bytes;
+    if (compression !== 1 && compression !== 2 || !window.DecompressionStream) {
+        throw new Error("Unsupported chunk compression.");
+    }
+
+    const format = compression === 1 ? "gzip" : "deflate";
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream(format));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function readRegionFile(bytes) {
+    if (bytes.length < 8192) return null;
+
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const records = new Map();
+    const occupiedSectors = new Set();
+    const sectorLimit = Math.ceil(bytes.length / 4096);
+    for (let index = 0; index < 1024; index += 1) {
+        const location = view.getUint32(index * 4);
+        if (location === 0) continue;
+
+        const sectorOffset = location >>> 8;
+        const sectorCount = location & 0xff;
+        const byteOffset = sectorOffset * 4096;
+        if (sectorOffset < 2 || sectorCount === 0 || sectorOffset + sectorCount > sectorLimit ||
+            byteOffset + 5 > bytes.length) return null;
+
+        const length = view.getUint32(byteOffset);
+        if (length < 1 || length + 4 > sectorCount * 4096 || byteOffset + length + 4 > bytes.length) return null;
+        const compression = bytes[byteOffset + 4];
+        if (compression & 0x80) return null;
+
+        for (let sector = sectorOffset; sector < sectorOffset + sectorCount; sector += 1) {
+            if (occupiedSectors.has(sector)) return null;
+            occupiedSectors.add(sector);
+        }
+
+        records.set(index, {
+            index,
+            sectorOffset,
+            sectorCount,
+            timestamp: view.getUint32(4096 + index * 4),
+            compression,
+            payload: bytes.slice(byteOffset + 5, byteOffset + 4 + length)
+        });
+    }
+
+    return { bytes, records };
+}
+
+function rebuildRegionFile(region, removedIndexes) {
+    if (!removedIndexes.size) return region.bytes;
+    const records = [...region.records.values()].filter(record => !removedIndexes.has(record.index));
+    if (!records.length) return null;
+
+    const sectorCount = 2 + records.reduce((total, record) => total + record.sectorCount, 0);
+    const output = new Uint8Array(sectorCount * 4096);
+    const outputView = new DataView(output.buffer);
+    let nextSector = 2;
+
+    for (const record of records) {
+        outputView.setUint32(record.index * 4, (nextSector << 8) | record.sectorCount);
+        outputView.setUint32(4096 + record.index * 4, record.timestamp);
+        output.set(
+            region.bytes.subarray(
+                record.sectorOffset * 4096,
+                (record.sectorOffset + record.sectorCount) * 4096
+            ),
+            nextSector * 4096
+        );
+        nextSector += record.sectorCount;
+    }
+
+    return output;
+}
+
+function getChunkCoordinates(path, index) {
+    const match = /r\.(-?\d+)\.(-?\d+)\.mca$/i.exec(path);
+    if (!match) return null;
+    return {
+        x: Number(match[1]) * 32 + index % 32,
+        z: Number(match[2]) * 32 + Math.floor(index / 32)
+    };
+}
+
+function isEmptyList(value) {
+    return value === undefined || Array.isArray(value) && value.length === 0;
+}
+
+function isEmptyCompound(value) {
+    return value === undefined || value !== null && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+function isEmptyNestedList(value) {
+    return Array.isArray(value) && value.every(isEmptyList);
+}
+
+function isEmptyChunk(chunk, coordinates) {
+    if (!chunk) return false;
+    if (chunk.xPos !== coordinates.x || chunk.zPos !== coordinates.z) return false;
+    if (!isEmptyNestedList(chunk.PostProcessing)) return false;
+    if (chunk.below_zero_retrogen !== undefined ||
+        chunk.UpgradeData !== undefined) return false;
+    if (Object.keys(chunk).some(key => !knownChunkFields.has(key))) return false;
+    if (!Array.isArray(chunk.sections) || !isEmptyList(chunk.entities) ||
+        !isEmptyList(chunk.block_entities)) return false;
+    if (!isEmptyList(chunk.block_ticks) || !isEmptyList(chunk.fluid_ticks)) return false;
+
+    const structures = chunk.structures;
+    if (!isEmptyCompound(structures)) {
+        if (Object.keys(structures).some(key => !knownStructureFields.has(key))) return false;
+        if (!isEmptyCompound(structures.starts) || !isEmptyCompound(structures.References) ||
+            !isEmptyCompound(structures.references)) return false;
+    }
+
+    return chunk.sections.every(section => {
+        const palette = section?.block_states?.palette;
+        return palette === undefined || (
+            Array.isArray(palette) && palette.length > 0 &&
+            palette.every(state => airBlockStates.has(state?.Name))
+        );
+    });
+}
+
+async function isEmptyEntityChunk(record) {
+    if (!record) return true;
+    try {
+        const root = createNbtReader(await decompressNbt(record.payload, record.compression));
+        const entities = root.Entities ?? root.entities;
+        return Array.isArray(entities) && entities.length === 0;
+    } catch {
+        return false;
+    }
+}
+
+function matchingEntityPath(regionPath) {
+    return regionPath.replace(/(^|\/)region\//, "$1entities/");
+}
+
+async function getWorldVersion() {
+    const levelEntry = pendingEntries.find(([path, entry]) => {
+        const normalizedPath = normalizePath(path);
+        return !entry.dir && normalizedPath === `${pendingWorldRoot}level.dat`;
+    })?.[1];
+    if (!levelEntry) return null;
+
+    try {
+        const root = createNbtReader(await decompressNbt(await levelEntry.async("uint8array"), 1));
+        const version = root.Data?.Version || root.Version;
+        return typeof version?.Name === "string" ? version.Name : null;
+    } catch {
+        return null;
+    }
+}
+
+async function pruneEmptyChunks(selectedDimensions = new Set()) {
+    const output = new Map();
+    const worldVersion = await getWorldVersion();
+    if (!supportedWorldVersions.has(worldVersion)) return output;
+
+    const entriesByPath = new Map();
+    for (const [path, entry] of pendingEntries) {
+        const normalizedPath = normalizePath(path);
+        if (!entry.dir && (!pendingWorldRoot || normalizedPath.startsWith(pendingWorldRoot))) {
+            entriesByPath.set(normalizedPath.slice(pendingWorldRoot.length), entry);
+        }
+    }
+
+    for (const [regionPath, regionEntry] of entriesByPath) {
+        if (!/(?:^|\/)region\/r\.-?\d+\.-?\d+\.mca$/i.test(regionPath)) continue;
+        if ([...selectedDimensions].some(path => regionPath.startsWith(path))) continue;
+
+        try {
+            const region = readRegionFile(await regionEntry.async("uint8array"));
+            if (!region) continue;
+            const entityPath = matchingEntityPath(regionPath);
+            const entityEntry = entriesByPath.get(entityPath);
+            const entities = entityEntry ? readRegionFile(await entityEntry.async("uint8array")) : null;
+            if (entityEntry && !entities) continue;
+
+            const removedIndexes = new Set();
+            for (const record of region.records.values()) {
+                const coordinates = getChunkCoordinates(regionPath, record.index);
+                if (!coordinates || !await isEmptyEntityChunk(entities?.records.get(record.index))) continue;
+
+                try {
+                    const chunk = createNbtReader(await decompressNbt(record.payload, record.compression));
+                    if (isEmptyChunk(chunk, coordinates)) removedIndexes.add(record.index);
+                } catch {
+                    continue;
+                }
+            }
+
+            if (!removedIndexes.size) continue;
+            output.set(regionPath, rebuildRegionFile(region, removedIndexes));
+            if (entities) output.set(entityPath, rebuildRegionFile(entities, removedIndexes));
+        } catch {
+            continue;
+        }
+    }
+
+    return output;
+}
 
 function createFolderNode(name, path) {
     return {
@@ -548,7 +855,8 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
     if (!pendingZip || !pendingEntries) return;
 
     showLoading("Analyzing...");
-
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    showLoading("Cleaning...");
     const newZip = new JSZip();
 
     for (const [path, entry] of pendingEntries) {
@@ -590,6 +898,17 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
         }
 
         newZip.file(worldPath, content);
+    }
+
+    showLoading("Pruning...");
+    const prunedRegionFiles = await pruneEmptyChunks(selectedDimensions);
+    for (const [path, content] of prunedRegionFiles) {
+        if (content === null) {
+            newZip.remove(path);
+            markPathRemoved(path);
+            continue;
+        }
+        newZip.file(path, content);
     }
 
     pendingCleanWorldZip = newZip;
