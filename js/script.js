@@ -10,9 +10,12 @@ let pendingSelectedDimensions = new Set();
 let pendingCleanWorldZip;
 let changeTreeRoot;
 let pendingRemovedPaths = new Set();
+let pendingResourceEntries;
+let pendingResourceRoot;
 
 const dimensionSelectionKey = "atlas-cleaner-selected-dimensions";
 const datapackSelectionKey = "atlas-cleaner-selected-datapacks";
+const resourceFolderSelectionKey = "atlas-cleaner-selected-resource-folders";
 const cleanupSettingsKey = "atlas-cleaner-cleanup-settings";
 const dimensionStorageFolders = new Set([
     "advancements",
@@ -554,6 +557,22 @@ function findResourceRoot(entries) {
     return findArchiveRoot(entries, "pack.mcmeta");
 }
 
+function findResourceFolders(entries, resourceRoot) {
+    const folders = new Set();
+
+    for (const [path, entry] of entries) {
+        const normalizedPath = normalizePath(path);
+        if (resourceRoot && !normalizedPath.startsWith(resourceRoot)) continue;
+
+        const resourcePath = normalizedPath.slice(resourceRoot.length);
+        const [folder] = resourcePath.split("/");
+        if (!folder || folder.startsWith(".")) continue;
+        if (entry.dir || resourcePath.includes("/")) folders.add(folder);
+    }
+
+    return [...folders].sort((a, b) => a.localeCompare(b));
+}
+
 const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
 
 function is64pxPng(bytes) {
@@ -584,6 +603,9 @@ const resourceUI = document.getElementById("resourceUI");
 const resourceFileButton = document.getElementById("resourceFileButton");
 const resourceSkipButton = document.getElementById("resourceSkipButton");
 const resourceFileInput = document.getElementById("resourceFileInput");
+const resourceFolderUI = document.getElementById("resourceFolderUI");
+const resourceFolderList = document.getElementById("resourceFolderList");
+const resourceFolderNextBtn = document.getElementById("resourceFolderNextBtn");
 const settingsList = document.getElementById("settingsList");
 
 const removableMetadataPatterns = [
@@ -728,6 +750,7 @@ function showLoading(message, isResourcePack = false) {
     dimensionUI.classList.add("hidden");
     datapackUI.classList.add("hidden");
     resourceUI.classList.add("hidden");
+    resourceFolderUI.classList.add("hidden");
     downloadBtn.classList.add("hidden");
     loadingText.textContent = message;
     loadingIcon.classList.toggle("loading-icon--yellow", isResourcePack);
@@ -768,6 +791,7 @@ function showSelectionSelector(list, ui, items, selectionKey, labelFor) {
     dimensionUI.classList.add("hidden");
     datapackUI.classList.add("hidden");
     resourceUI.classList.add("hidden");
+    resourceFolderUI.classList.add("hidden");
     list.innerHTML = "";
 
     for (const item of items) {
@@ -811,6 +835,52 @@ function datapackLabel(datapackPath) {
     return datapackPath.split("/").slice(1, -1).join("/");
 }
 
+function showResourceFolderSelector(folders) {
+    const rememberedFolders = readSelectedItems(resourceFolderSelectionKey);
+    hideLoading();
+    dimensionUI.classList.add("hidden");
+    datapackUI.classList.add("hidden");
+    resourceUI.classList.add("hidden");
+    resourceFolderList.innerHTML = "";
+
+    for (const folder of folders) {
+        const row = document.createElement(folder === "assets" ? "div" : "label");
+        const indicator = document.createElement("span");
+        const name = document.createElement("span");
+
+        row.className = "selection-row";
+        row.dataset.selectionPath = folder;
+        indicator.className = "selection-checkbox";
+        name.className = "selection-name";
+        name.textContent = folder;
+
+        if (folder === "assets") {
+            row.classList.add("resource-folder-fixed");
+            row.setAttribute("aria-label", "assets is always kept");
+            row.append(indicator, name);
+            resourceFolderList.append(row);
+            continue;
+        }
+
+        const input = document.createElement("input");
+        const trash = document.createElement("img");
+        input.type = "checkbox";
+        input.checked = rememberedFolders.has(folder);
+        trash.className = "selection-trash";
+        trash.src = "./assets/imgs/trash.png";
+        trash.alt = "";
+        input.addEventListener("change", () => updateSelectionRow(row, input));
+        updateSelectionRow(row, input);
+        indicator.append(trash);
+        row.append(input, indicator, name);
+        resourceFolderList.append(row);
+    }
+
+    resourceFolderUI.classList.remove("hidden");
+    dropZone.classList.remove("resource-mode", "dragover");
+    dropZone.classList.add("dimension-mode");
+}
+
 initializeSettings();
 
 // ---------------- UPLOAD ----------------
@@ -847,6 +917,12 @@ resourceSkipButton.addEventListener("click", () => {
 
 resourceFileInput.addEventListener("change", () => {
     processResourcePack(resourceFileInput.files[0]);
+});
+
+resourceFolderNextBtn.addEventListener("click", () => {
+    const selectedFolders = selectedItemsFromUI(resourceFolderList);
+    saveSelectedItems(resourceFolderSelectionKey, selectedFolders);
+    cleanResourcePack(selectedFolders);
 });
 
 // ---------------- DRAG & DROP ----------------
@@ -1031,6 +1107,7 @@ function showResourceUpload() {
     hideLoading();
     dimensionUI.classList.add("hidden");
     datapackUI.classList.add("hidden");
+    resourceFolderUI.classList.add("hidden");
     resourceUI.classList.remove("hidden");
     dropZone.classList.remove("dimension-mode", "dragover");
     dropZone.classList.add("resource-mode");
@@ -1070,17 +1147,43 @@ async function processResourcePack(file) {
             throw new Error("The resource pack must contain exactly one pack.mcmeta file.");
         }
 
-        const resourceRoot = findResourceRoot(resourceEntries);
+        pendingResourceEntries = resourceEntries;
+        pendingResourceRoot = findResourceRoot(resourceEntries);
+        const resourceFolders = findResourceFolders(resourceEntries, pendingResourceRoot);
+        if (resourceFolders.some(folder => folder !== "assets")) {
+            showResourceFolderSelector(resourceFolders);
+            return;
+        }
+
+        await cleanResourcePack(new Set());
+    } catch (error) {
+        resourceFileInput.value = "";
+        alert(error.message || "The resource pack could not be processed.");
+        showResourceUpload();
+    }
+}
+
+async function cleanResourcePack(selectedFolders) {
+    if (!pendingResourceEntries || !pendingCleanWorldZip) return;
+
+    showLoading("Cleaning...", true);
+
+    try {
+        const resourceRoot = pendingResourceRoot;
         const cleanedResourceZip = new JSZip();
         let resourceIcon;
-        addResourcePackToChangeTree(resourceEntries, resourceRoot);
+        addResourcePackToChangeTree(pendingResourceEntries, resourceRoot);
         renderChangesTree();
 
-        for (const [path, entry] of resourceEntries) {
+        for (const [path, entry] of pendingResourceEntries) {
             const normalizedPath = normalizePath(path);
             if (resourceRoot && !normalizedPath.startsWith(resourceRoot)) continue;
 
             const resourcePath = normalizedPath.slice(resourceRoot.length);
+            if (selectedFolders.has(resourcePath.split("/")[0])) {
+                markPathRemoved(`resourcepacks/resources.zip/${resourcePath}`);
+                continue;
+            }
             if (removableMetadataPatterns.some(pattern => pattern.test(resourcePath))) {
                 markPathRemoved(`resourcepacks/resources.zip/${resourcePath}`);
                 continue;
@@ -1104,6 +1207,8 @@ async function processResourcePack(file) {
         await finishProcessing();
     } catch (error) {
         resourceFileInput.value = "";
+        pendingResourceEntries = undefined;
+        pendingResourceRoot = undefined;
         alert(error.message || "The resource pack could not be processed.");
         showResourceUpload();
     }

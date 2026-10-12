@@ -207,6 +207,22 @@ body {
     display: block;
 }
 
+.resource-folder-fixed {
+    cursor: default;
+}
+
+.resource-folder-fixed .selection-checkbox {
+    background: transparent;
+    border: 0;
+    color: var(--gray-2);
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.resource-folder-fixed .selection-checkbox::before {
+    content: "•";
+}
+
 .settings-ui {
     margin-top: .75rem;
 }
