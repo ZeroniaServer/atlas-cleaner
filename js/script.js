@@ -230,6 +230,12 @@ function isEmptyNestedList(value) {
     return Array.isArray(value) && value.every(isEmptyList);
 }
 
+function getBlockStateName(state) {
+    if (typeof state === "string") return state;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+    return state.Name ?? state.id ?? state[""] ?? null;
+}
+
 function isEmptyChunk(chunk, coordinates) {
     if (!chunk) return false;
     if (chunk.xPos !== coordinates.x || chunk.zPos !== coordinates.z) return false;
@@ -252,7 +258,7 @@ function isEmptyChunk(chunk, coordinates) {
         const palette = section?.block_states?.palette;
         return palette === undefined || (
             Array.isArray(palette) && palette.length > 0 &&
-            palette.every(state => airBlockStates.has(state?.Name))
+            palette.every(state => airBlockStates.has(getBlockStateName(state)))
         );
     });
 }
