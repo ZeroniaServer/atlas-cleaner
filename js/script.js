@@ -582,6 +582,7 @@ const datapackList = document.getElementById("datapackList");
 const datapackNextBtn = document.getElementById("datapackNextBtn");
 const resourceUI = document.getElementById("resourceUI");
 const resourceFileButton = document.getElementById("resourceFileButton");
+const resourceSkipButton = document.getElementById("resourceSkipButton");
 const resourceFileInput = document.getElementById("resourceFileInput");
 const settingsList = document.getElementById("settingsList");
 
@@ -840,6 +841,10 @@ resourceFileButton.addEventListener("click", (event) => {
     resourceFileInput.click();
 });
 
+resourceSkipButton.addEventListener("click", () => {
+    finishProcessing();
+});
+
 resourceFileInput.addEventListener("change", () => {
     processResourcePack(resourceFileInput.files[0]);
 });
@@ -1002,6 +1007,23 @@ function showResourceUpload() {
     dropZone.classList.add("resource-mode");
 }
 
+async function finishProcessing() {
+    if (!pendingCleanWorldZip) return;
+
+    showLoading("Preparing download...");
+    cleanedBlob = await pendingCleanWorldZip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE"
+    });
+
+    hideLoading();
+    resourceFileInput.value = "";
+    dropZone.classList.remove("dimension-mode", "resource-mode", "dragover");
+    renderChangesTree();
+    downloadBtn.classList.remove("hidden");
+    downloadFilename.textContent = downloadFileName;
+}
+
 async function processResourcePack(file) {
     if (!file || !pendingCleanWorldZip) return;
 
@@ -1050,17 +1072,7 @@ async function processResourcePack(file) {
             pendingCleanWorldZip.file("icon.png", resourceIcon);
             addChangeTreeEntry(changeTreeRoot, "icon.png", false);
         }
-        cleanedBlob = await pendingCleanWorldZip.generateAsync({
-            type: "blob",
-            compression: "DEFLATE"
-        });
-
-        hideLoading();
-        resourceFileInput.value = "";
-        dropZone.classList.remove("dimension-mode", "resource-mode", "dragover");
-        renderChangesTree();
-        downloadBtn.classList.remove("hidden");
-        downloadFilename.textContent = downloadFileName;
+        await finishProcessing();
     } catch (error) {
         resourceFileInput.value = "";
         alert(error.message || "The resource pack could not be processed.");
