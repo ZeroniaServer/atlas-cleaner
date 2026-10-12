@@ -936,6 +936,12 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
     const deleteRules = getConfiguredDeleteRules();
     const selectedDimensionPaths = [...selectedDimensions];
     const selectedDatapackPaths = [...selectedDatapacks];
+    const retainedDatapackPaths = pendingDatapacks.filter(
+        datapackPath => !selectedDatapackPaths.includes(datapackPath)
+    );
+    const datapackArchives = new Map(
+        retainedDatapackPaths.map(datapackPath => [datapackPath, new JSZip()])
+    );
     showLoading("Analyzing...");
     await new Promise(resolve => requestAnimationFrame(resolve));
     showLoading("Cleaning...");
@@ -963,6 +969,8 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             continue;
         }
 
+        const datapackPath = retainedDatapackPaths.find(path => worldPath.startsWith(path));
+        if (datapackPath) markPathRemoved(worldPath);
         if (entry.dir) continue;
 
         const content = await entry.async("uint8array");
@@ -980,7 +988,28 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             continue;
         }
 
+        if (datapackPath) {
+            datapackArchives.get(datapackPath).file(
+                worldPath.slice(datapackPath.length),
+                content
+            );
+            continue;
+        }
+
         newZip.file(worldPath, content);
+    }
+
+    if (datapackArchives.size) {
+        showLoading("Packaging datapacks...");
+        for (const [datapackPath, datapackZip] of datapackArchives) {
+            const archivePath = `${datapackPath.slice(0, -1)}.zip`;
+            const archiveBytes = await datapackZip.generateAsync({
+                type: "uint8array",
+                compression: "DEFLATE"
+            });
+            newZip.file(archivePath, archiveBytes);
+            addChangeTreeEntry(changeTreeRoot, archivePath, false);
+        }
     }
 
     showLoading("Pruning...");
