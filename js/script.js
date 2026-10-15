@@ -621,6 +621,7 @@ const removableMetadataPatterns = [
 ];
 
 const foldersToDelete = [
+    /^datapack\?\?(?:\/|$)/,
     "advancements/",
     "playerdata/",
     "players/",
