@@ -637,6 +637,9 @@ const cleanupSettingDefinitions = {
     copyIcon: { defaultValue: true }
 };
 const poiDeleteRule = cleanupSettingDefinitions.removePoi.rule;
+const protectedWorldFileRules = [
+    /^data\/minecraft\/game_rules\.dat$/
+];
 const defaultCleanupSettings = Object.fromEntries(
     Object.entries(cleanupSettingDefinitions).map(([key, definition]) => [key, definition.defaultValue])
 );
@@ -719,6 +722,10 @@ function matchesDeleteRule(filePath, rules = foldersToDelete) {
         }
         return rule.test(filePath);
     });
+}
+
+function isProtectedWorldFile(filePath) {
+    return protectedWorldFileRules.some(rule => rule.test(filePath));
 }
 
 function getConfiguredDeleteRules() {
@@ -1047,7 +1054,7 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             continue;
         }
 
-        if (matchesDeleteRule(worldPath, deleteRules)) {
+        if (!isProtectedWorldFile(worldPath) && matchesDeleteRule(worldPath, deleteRules)) {
             markPathRemoved(worldPath);
             continue;
         }
