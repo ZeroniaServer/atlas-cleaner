@@ -684,7 +684,12 @@ function findDatapacks(entries, worldRoot) {
 
         const worldPath = normalizedPath.slice(worldRoot.length);
         const parts = worldPath.split("/");
-        if (parts[0] !== "datapacks" || parts[parts.length - 1] !== "pack.mcmeta") continue;
+        if (parts[0] !== "datapacks") continue;
+        if (parts.length === 2 && /\.zip$/i.test(parts[1])) {
+            datapackPaths.add(worldPath);
+            continue;
+        }
+        if (parts[parts.length - 1] !== "pack.mcmeta") continue;
 
         const datapackParts = parts.slice(1, -1);
         if (!datapackParts.length || datapackParts.some(part => part.startsWith("."))) continue;
@@ -846,7 +851,20 @@ function selectedItemsFromUI(list) {
 }
 
 function datapackLabel(datapackPath) {
+    if (isZippedDatapackPath(datapackPath)) {
+        return datapackPath.slice("datapacks/".length);
+    }
     return datapackPath.split("/").slice(1, -1).join("/");
+}
+
+function isZippedDatapackPath(datapackPath) {
+    return datapackPath.toLowerCase().endsWith(".zip");
+}
+
+function datapackPathMatches(worldPath, datapackPath) {
+    return isZippedDatapackPath(datapackPath)
+        ? worldPath === datapackPath
+        : worldPath.startsWith(datapackPath);
 }
 
 function showResourceFolderSelector(folders) {
@@ -1030,7 +1048,9 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
         datapackPath => !selectedDatapackPaths.includes(datapackPath)
     );
     const datapackArchives = new Map(
-        retainedDatapackPaths.map(datapackPath => [datapackPath, new JSZip()])
+        retainedDatapackPaths
+            .filter(datapackPath => !isZippedDatapackPath(datapackPath))
+            .map(datapackPath => [datapackPath, new JSZip()])
     );
     showLoading("Analyzing...");
     await new Promise(resolve => requestAnimationFrame(resolve));
@@ -1049,7 +1069,7 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             continue;
         }
 
-        if (selectedDatapackPaths.some(datapackPath => worldPath.startsWith(datapackPath))) {
+        if (selectedDatapackPaths.some(datapackPath => datapackPathMatches(worldPath, datapackPath))) {
             markPathRemoved(worldPath);
             continue;
         }
@@ -1059,7 +1079,9 @@ async function startProcessing(selectedDimensions, selectedDatapacks) {
             continue;
         }
 
-        const datapackPath = retainedDatapackPaths.find(path => worldPath.startsWith(path));
+        const datapackPath = retainedDatapackPaths.find(path =>
+            !isZippedDatapackPath(path) && worldPath.startsWith(path)
+        );
         if (datapackPath) markPathRemoved(worldPath);
         if (entry.dir) continue;
 
