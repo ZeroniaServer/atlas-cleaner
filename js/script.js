@@ -617,7 +617,9 @@ const settingsList = document.getElementById("settingsList");
 const removableMetadataPatterns = [
     /(?:^|\/)\.[^/]+(?:\/|$)/,
     /\.(?:md|py)$/i,
-    /(?:^|\/)(?!license\.txt$)[^/]+\.txt$/i
+    /(?:^|\/)(?!license\.txt$)[^/]+\.txt$/i,
+    /(?:^|\/)datapacks\/spyglass\.json$/,
+    /(?:^|\/)datapacks\/commands\.json$/
 ];
 
 const foldersToDelete = [
