@@ -618,8 +618,7 @@ const removableMetadataPatterns = [
     /(?:^|\/)\.[^/]+(?:\/|$)/,
     /\.(?:md|py)$/i,
     /(?:^|\/)(?!license\.txt$)[^/]+\.txt$/i,
-    /(?:^|\/)datapacks\/spyglass\.json$/,
-    /(?:^|\/)datapacks\/commands\.json$/
+    /^datapacks\/(?:spyglass|commands)\.json$/i
 ];
 
 const foldersToDelete = [
