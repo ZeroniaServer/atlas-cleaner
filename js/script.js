@@ -628,7 +628,6 @@ const foldersToDelete = [
     "players/",
     "stats/",
     /^(?:level\.dat_old|session\.lock)$/,
-    /^data\/(?:[^/]+\/)?command_storage\.dat$/,
     ...removableMetadataPatterns
 ];
 
